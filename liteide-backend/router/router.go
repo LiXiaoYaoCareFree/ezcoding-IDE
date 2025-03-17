@@ -1,46 +1,33 @@
 package router
 
 import (
-	"errors"
-	"github.com/gofiber/contrib/websocket"
-	"github.com/gofiber/fiber/v2"
-	"strconv"
+	"github.com/gofiber/contrib/websocket" // 引入 Fiber WebSocket 支持库
+	"github.com/gofiber/fiber/v2"          // 引入 Fiber Web 框架
+	"liteide-backend/controller"           // 引入控制器，用于处理 HTTP 请求
 )
 
-func ErrorHandler(c *fiber.Ctx, err error) error {
-	code := fiber.StatusInternalServerError
+// UseRouter 负责注册 API 和 WebSocket 相关的路由
+// - `app`：Fiber Web 服务器实例
+func UseRouter(app *fiber.App) {
+	// 注册 HTTP API 路由
+	app.Post("/container", controller.CreateContainer)
+	// 处理创建容器请求（POST 方法）
+	// 例如：POST /container
+	// Body: {"image": "nginx", "name": "my-container"}
+	// 返回：{"id": "abc123456", "status": "created"}
 
-	var e *fiber.Error
-	if errors.As(err, &e) {
-		code = e.Code
-	}
+	app.Delete("/container/:id<int>", controller.RemoveContainer)
+	// 处理删除指定 ID 容器的请求（DELETE 方法）
+	// 例如：DELETE /container/123
+	// 返回：{"id": 123, "status": "removed"}
 
-	return c.Status(code).JSON(fiber.Map{
-		"message": err.Error(),
-	})
-}
+	// WebSocket 相关路由
+	app.Use("/ws", useWS)
+	// 中间件，针对所有 `/ws` 开头的 WebSocket 路由执行额外逻辑（如身份验证）
+	// 例如：拦截非授权用户或日志记录
 
-func useWS(c *fiber.Ctx) error {
-	if websocket.IsWebSocketUpgrade(c) {
-		return c.Next()
-	}
-	return fiber.ErrUpgradeRequired
-}
-
-func usePagination() fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		page, err := strconv.ParseInt(c.Query("page", "1"), 10, 64)
-		if page <= 0 || err != nil {
-			page = 1
-		}
-		size, err := strconv.ParseInt(c.Query("size", "10"), 10, 64)
-		if size < 0 || err != nil {
-			size = 10
-		}
-
-		c.Locals("offset", int((page-1)*size))
-		c.Locals("limit", int(size))
-
-		return c.Next()
-	}
+	app.Get("/ws/container/:id<int>", websocket.New(controller.AttachContainer))
+	// WebSocket 连接到指定 ID 的 Docker 容器（GET 方法）
+	// 例如：ws://localhost:8080/ws/container/123
+	// 用于获取容器的实时日志或交互式终端
 }
